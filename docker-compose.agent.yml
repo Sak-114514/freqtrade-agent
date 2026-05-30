@@ -1,0 +1,20 @@
+services:
+  freqtrade-agent:
+    build:
+      context: .
+    container_name: freqtrade-agent
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8090:8090"
+    volumes:
+      - ./user_data:/app/user_data
+    environment:
+      FREQTRADE_AGENT_HOST: 0.0.0.0
+      FREQTRADE_AGENT_PORT: 8090
+      FREQTRADE_AGENT_PUBLIC_URL: http://127.0.0.1:8090
+      FREQTRADE_AGENT_USER_DATA_DIR: /app/user_data
+      # If the agent runs as a separate compose project, host.docker.internal
+      # usually reaches the Freqtrade API published on the host.
+      FREQTRADE_API_BASE_URL: http://host.docker.internal:8080
+      # If this service joins the same Docker network as Freqtrade, use:
+      # FREQTRADE_API_BASE_URL: http://freqtrade:8080
