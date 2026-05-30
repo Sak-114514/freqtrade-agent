@@ -391,18 +391,34 @@ class TradingCopilot:
 
         def names(group: str) -> str:
             items = groups.get(group) if isinstance(groups.get(group), list) else []
-            return ", ".join(str(item.get("name")) for item in items if item.get("name")) or "无"
+            fallback = "none" if self._prefers_english(question) else "无"
+            return ", ".join(str(item.get("name")) for item in items if item.get("name")) or fallback
 
-        answer = (
-            "我是你的本地 Freqtrade Trading Copilot。能帮你看机器人状态、收益、余额、"
-            "持仓、日志、配置、行情和新闻; 也能做记忆、监控和定时提醒。\n\n"
-            f"主要工具: Freqtrade 查询({names('freqtrade_readonly')}), "
-            f"行情({names('market')}), Web({names('web')}), 记忆({names('memory')})。\n"
-            f"需要确认的控制类: {names('freqtrade_l1_control')}; "
-            f"{names('monitor')}; {names('scheduler')}。\n"
-            "不会做: forceenter/forceexit、实盘下单、关闭 dry_run、改策略/config、"
-            "shell/docker、改交易所密钥。"
-        )
+        if self._prefers_english(question):
+            answer = (
+                "I am your local Freqtrade Trading Copilot. I can inspect bot status, "
+                "profit, balance, open trades, logs, config, market data, news, memory, "
+                "monitors, scheduled reports and Telegram charts.\n\n"
+                f"Main tools: Freqtrade read-only ({names('freqtrade_readonly')}), "
+                f"market ({names('market')}), web ({names('web')}), memory ({names('memory')}), "
+                f"charts ({names('charts')}).\n"
+                f"Confirmation-required controls: {names('freqtrade_l1_control')}; "
+                f"{names('monitor')}; {names('scheduler')}.\n"
+                "I will not do forceenter/forceexit, live order placement, disabling dry_run, "
+                "strategy/config edits, shell/docker execution, or exchange credential changes."
+            )
+        else:
+            answer = (
+                "我是你的本地 Freqtrade Trading Copilot。能帮你看机器人状态、收益、余额、"
+                "持仓、日志、配置、行情和新闻; 也能做记忆、监控、定时提醒和 Telegram 图表。\n\n"
+                f"主要工具: Freqtrade 查询({names('freqtrade_readonly')}), "
+                f"行情({names('market')}), Web({names('web')}), 记忆({names('memory')}), "
+                f"图表({names('charts')})。\n"
+                f"需要确认的控制类: {names('freqtrade_l1_control')}; "
+                f"{names('monitor')}; {names('scheduler')}。\n"
+                "不会做: forceenter/forceexit、实盘下单、关闭 dry_run、改策略/config、"
+                "shell/docker、改交易所密钥。"
+            )
         return self._verified_response(
             question=question,
             answer=answer,
@@ -925,6 +941,8 @@ class TradingCopilot:
             "能够操控什么工具",
             "能看到什么工具",
             "能够看到什么工具",
+            "能用什么工具",
+            "能够用什么工具",
             "有哪些工具",
             "可用工具",
             "工具列表",
@@ -1061,40 +1079,58 @@ class TradingCopilot:
 
     def _system_prompt(self) -> str:
         return (
-            "你是本地 Freqtrade Trading Copilot。自然、简短、直接回答, 不用模板和 emoji。\n"
-            "面向 Telegram 时使用纯文本: 不要 Markdown, 不要 **粗体**, 不要反引号代码块, 少用符号列表。\n"
-            "交易/行情/新闻事实需要工具; 能力介绍不用查交易状态。\n"
-            "需要工具就调用; 需要确认就返回 permission_required。\n"
-            "拒绝真实下单、forceenter/forceexit、关闭 dry_run、改策略/config、shell/docker。"
+            "You are the local Freqtrade Trading Copilot. Reply naturally, briefly and directly.\n"
+            "Reply in the same language as the user: English for English, Chinese for Chinese. "
+            "Keep key terms such as dry-run, open trades, profit, drawdown, stake and timeframe.\n"
+            "For Telegram, use plain text only: no Markdown, no bold markup, no code blocks, "
+            "and no decorative formatting.\n"
+            "Trading, market, news, balance, profit, logs and config facts require tool results; "
+            "capability questions may use local registry metadata.\n"
+            "Call tools when needed; return permission_required when confirmation is needed.\n"
+            "Refuse live order placement, forceenter/forceexit, disabling dry_run, strategy/config "
+            "edits, shell/docker execution and exchange credential changes."
         )
 
     def _memory_prompt(self, memory_used: dict[str, Any]) -> str:
         prompt = (
-            "默认不要塞旧对话。需要历史/偏好/上次结论时调用 memory_recall; "
-            "需要排查刚才为什么卡住、用了哪些工具、权限怎么走时调用 memory_search_behavior; "
-            "用户明确说记住偏好时调用 memory_save_preference。"
+            "Do not load old conversations by default. Use memory_recall only when the user asks "
+            "about history, preferences or prior conclusions. Use memory_search_behavior to debug "
+            "recent tool chains, permission flow or failures. Use memory_save_preference only when "
+            "the user explicitly asks you to remember a preference."
         )
         short_term = memory_used.get("short_term_messages")
         if isinstance(short_term, list) and short_term:
             lines = [
-                "短时 Telegram 上下文, 仅用于理解代词和续接上一轮, 不包含工具调用链:",
+                "Short-term Telegram context for pronouns and follow-ups only; no tool-call chain:",
             ]
             for item in short_term[-20:]:
                 if not isinstance(item, dict):
                     continue
-                role = "用户" if item.get("role") == "user" else "Agent"
+                role = "User" if item.get("role") == "user" else "Agent"
                 content = str(item.get("content") or "").strip()
                 if content:
                     lines.append(f"{role}: {content}")
-            lines.append("如果用户说“发过来/发一下/那个/上面/继续”, 优先用这里最近一轮的对象、路径或意图。")
+            lines.append(
+                "If the user says 'send it', 'that one', 'above', 'continue', "
+                "or similar Chinese phrases such as '发过来/那个/继续', use the latest object, "
+                "path or intent from this context."
+            )
             prompt = prompt + "\n\n" + "\n".join(lines)
         return prompt
 
     def _plan(self, _question: str) -> str:
         return (
             "LLM 判断意图 -> 选择白名单工具 -> Registry 执行或生成 ask 权限请求 -> "
-            "观察结果 -> verifier 检查 -> 中文回答。"
+            "观察结果 -> verifier 检查 -> answer in user language。"
         )
+
+    def _prefers_english(self, text: str) -> bool:
+        stripped = text.strip()
+        if not stripped:
+            return False
+        cjk_count = sum(1 for char in stripped if "\u4e00" <= char <= "\u9fff")
+        ascii_letters = sum(1 for char in stripped if char.isascii() and char.isalpha())
+        return ascii_letters > 0 and cjk_count == 0
 
     def _parse_tool_args(self, raw: Any) -> dict[str, Any]:
         if not raw:
@@ -1882,16 +1918,16 @@ class TradingCopilot:
         approved = ", ".join(sorted(approved_tools))
         approved_groups = ", ".join(self._approved_group_names(approved_tools)) or "custom"
         return (
-            "Permission resume context: 用户已经批准本轮 run 内的相关工具调用。"
-            f"已批准的 run-scoped 工具组: {approved_groups}。"
-            f"当前 run 内已临时允许的工具: {approved}。"
-            "同一工具组内的后续工具可继续执行, 不要再次请求同类授权; "
-            "工具结果足够时必须停止调用工具并用中文总结。"
-            "优先基于 web_search 返回的 title/content/url/published_date 回答; "
-            "只有必须核对原文细节时才调用 web_fetch。"
-            "如果是 monitor/scheduler/Freqtrade L1 控制类工具, 也使用同一套本轮授权续跑流程。"
-            "未注册工具、L2 高风险工具、关闭 dry_run、实盘下单、改策略和 shell/docker 仍不可用。"
-            "所有结论必须区分工具事实和基于事实的推测, 并说明未执行任何交易。"
+            "Permission resume context: the user has approved related tool calls for this run. "
+            f"Approved run-scoped tool groups: {approved_groups}. "
+            f"Temporarily allowed tools in this run: {approved}. "
+            "Continue within the same approved group without asking again; stop calling tools "
+            "once results are sufficient and answer in the user's language. "
+            "Prefer web_search title/content/url/published_date; call web_fetch only when original "
+            "page details are necessary. Monitor, scheduler and Freqtrade L1 tools use the same "
+            "run-scoped approval flow. Unregistered tools, L2 high-risk tools, disabling dry_run, "
+            "live trading, strategy edits and shell/docker remain unavailable. Distinguish tool "
+            "facts from inference and state that no trade was executed."
         )
 
     def _approved_group_names(self, approved_tools: set[str]) -> list[str]:
