@@ -186,13 +186,3 @@ python tools/freqtrade_agent_server.py
 ```
 
 这是从原来内嵌式目录迁移到独立仓库的推荐方式。
-
-## 推送前检查
-
-不要提交本地密钥或运行时数据：
-
-- `user_data/config.json`
-- `user_data/agent_llm.env`
-- `user_data/*.sqlite`
-- `user_data/agent_charts/`
-- `.pytest_cache/`、`.ruff_cache/`、`.DS_Store` 等缓存文件

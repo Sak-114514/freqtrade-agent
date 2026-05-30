@@ -196,13 +196,3 @@ python tools/freqtrade_agent_server.py
 ```
 
 This is the recommended migration path from the original in-tree setup.
-
-## Before Publishing
-
-Do not commit local secrets or generated runtime data:
-
-- `user_data/config.json`
-- `user_data/agent_llm.env`
-- `user_data/*.sqlite`
-- `user_data/agent_charts/`
-- caches such as `.pytest_cache/`, `.ruff_cache/`, `.DS_Store`
